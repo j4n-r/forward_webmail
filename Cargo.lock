@@ -415,6 +415,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "forward_webmail"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "config",
+ "lettre",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "futures-channel"
 version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2022,19 +2035,6 @@ checksum = "9367c417a924a74cae129e6a2ae3b47fabb1f8995595ab474029da749a8be120"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "webmail"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "config",
- "lettre",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
 ]
 
 [[package]]
