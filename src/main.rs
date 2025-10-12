@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{Context, anyhow};
 use config::Config;
 use reqwest::{
     Url,
@@ -32,12 +32,12 @@ struct EmailData {
     attachment: bool,
     subject: String,
     date: i64,
-    attachments: Vec<EmailAttachment>
+    attachments: Vec<EmailAttachment>,
 }
 
 #[derive(Deserialize, Debug)]
 struct Email {
-    data: EmailData
+    data: EmailData,
 }
 
 async fn login(
@@ -56,7 +56,11 @@ async fn login(
     Ok(res)
 }
 
-async fn get_email_by_id(client: &reqwest::Client, session_key: &str, id: i32) -> anyhow::Result<Email> {
+async fn get_email_by_id(
+    client: &reqwest::Client,
+    session_key: &str,
+    id: i32,
+) -> anyhow::Result<Email> {
     let url = Url::parse("https://webmail.stud.hwr-berlin.de/appsuite/api/mail")?;
     let params = [
         ("action", "get"),
@@ -64,17 +68,38 @@ async fn get_email_by_id(client: &reqwest::Client, session_key: &str, id: i32) -
         ("folder", "default0/INBOX"),
         ("session", session_key),
     ];
-    let res_text = client
-        .get(url)
-        .query(&params)
-        .send()
-        .await?
-        .text()
-        .await?;
+    let res_text = client.get(url).query(&params).send().await?.text().await?;
     println!("Email: {res_text:?}");
     let email: Email = serde_json::from_str(&res_text)?;
     println!("{email:?}");
     Ok(email)
+}
+
+async fn get_total_emails(
+    client: &reqwest::Client,
+    session_key: &str,
+) -> anyhow::Result<i64> {
+    let url = Url::parse("https://webmail.stud.hwr-berlin.de/appsuite/api/mail")?;
+    let params = [
+        ("action", "all"),
+        ("folder", "default0/INBOX"),
+        ("session", session_key),
+        ("columns", "600"),
+        ("order", "desc"),
+        ("limit", "1")
+    ];
+    let res_text = client.get(url).query(&params).send().await?.text().await?;
+    println!("Total Emails: {res_text:?}");
+    let res_values: serde_json::Value = serde_json::from_str(&res_text)?;
+    match res_values["data"][0][0].as_str() {
+        Some(total) => {
+            Ok(total.parse::<i64>()?)
+        }
+        None =>  Err(anyhow!("Something went wrong while getting total"))
+    }
+    // let email: Email = serde_json::from_str(&res_text)?;
+    // println!("{email:?}");
+
 }
 
 #[tokio::main]
@@ -101,6 +126,8 @@ async fn main() -> anyhow::Result<()> {
 
     let res_json = res.json::<LoginResponse>().await?;
     let email = get_email_by_id(&client, res_json.session.as_str(), 1040).await?;
+    let total = get_total_emails(&client, res_json.session.as_str()).await?;
+    println!("Total Emails: {total}");
 
     Ok(())
 }

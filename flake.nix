@@ -24,6 +24,7 @@
             clippy
             openssl
             pkg-config
+            jq
           ];
 
           env = {
