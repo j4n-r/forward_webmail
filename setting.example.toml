@@ -1,2 +1,6 @@
 username = "testname"
 password = "testpass"
+smtp_username = ""
+smtp_token = ""
+smtp_server = ""
+smtp_port = 587
