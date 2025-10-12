@@ -1,7 +1,7 @@
-use anyhow::{ anyhow};
+use crate::settings;
+use anyhow::anyhow;
 use reqwest::Url;
 use serde::Deserialize;
-use crate::settings;
 
 #[derive(Deserialize, Debug)]
 
@@ -52,7 +52,8 @@ pub async fn get_email_by_id(
     session_key: &str,
     id: i32,
 ) -> anyhow::Result<Email> {
-    let url = Url::parse("https://webmail.stud.hwr-berlin.de/appsuite/api/mail")?;
+    let url =
+        Url::parse("https://webmail.stud.hwr-berlin.de/appsuite/api/mail")?;
     let params = [
         ("action", "get"),
         ("id", &id.to_string()),
@@ -66,8 +67,12 @@ pub async fn get_email_by_id(
     Ok(email)
 }
 
-pub async fn get_total_emails(client: &reqwest::Client, session_key: &str) -> anyhow::Result<i32> {
-    let url = Url::parse("https://webmail.stud.hwr-berlin.de/appsuite/api/mail")?;
+pub async fn get_total_emails(
+    client: &reqwest::Client,
+    session_key: &str,
+) -> anyhow::Result<i32> {
+    let url =
+        Url::parse("https://webmail.stud.hwr-berlin.de/appsuite/api/mail")?;
     let params = [
         ("action", "all"),
         ("folder", "default0/INBOX"),
