@@ -12,14 +12,32 @@ struct LoginResponse {
     session: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct UserSettings {
     username: String,
     password: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
+struct EmailAttachment {
+    content_type: String,
+    size: i32,
+    content: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct EmailData {
+    from: Vec<Vec<Option<String>>>,
+    to: Vec<Vec<Option<String>>>,
+    attachment: bool,
+    subject: String,
+    date: i64,
+    attachments: Vec<EmailAttachment>
+}
+
+#[derive(Deserialize, Debug)]
 struct Email {
+    data: EmailData
 }
 
 async fn login(
@@ -38,11 +56,11 @@ async fn login(
     Ok(res)
 }
 
-async fn get_email_by_id(client: &reqwest::Client, session_key: &str) -> anyhow::Result<Email> {
+async fn get_email_by_id(client: &reqwest::Client, session_key: &str, id: i32) -> anyhow::Result<Email> {
     let url = Url::parse("https://webmail.stud.hwr-berlin.de/appsuite/api/mail")?;
     let params = [
         ("action", "get"),
-        ("id", "1020"),
+        ("id", &id.to_string()),
         ("folder", "default0/INBOX"),
         ("session", session_key),
     ];
@@ -55,6 +73,7 @@ async fn get_email_by_id(client: &reqwest::Client, session_key: &str) -> anyhow:
         .await?;
     println!("Email: {res_text:?}");
     let email: Email = serde_json::from_str(&res_text)?;
+    println!("{email:?}");
     Ok(email)
 }
 
@@ -81,7 +100,7 @@ async fn main() -> anyhow::Result<()> {
     jar.set_cookies(&mut res_headers, &url);
 
     let res_json = res.json::<LoginResponse>().await?;
-    let email = get_email_by_id(&client, res_json.session.as_str()).await?;
+    let email = get_email_by_id(&client, res_json.session.as_str(), 1040).await?;
 
     Ok(())
 }
