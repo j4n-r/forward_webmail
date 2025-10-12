@@ -1,20 +1,29 @@
+use crate::settings;
 use lettre::message::{Mailbox, header::ContentType};
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{Message, SmtpTransport, Transport};
 
-fn main() {
+pub fn send_mail(settings: &settings::UserSettings) {
     let email = Message::builder()
-        .from(Mailbox::new(Some("j4n-r".to_owned()), "hwr@j4n.me".parse().unwrap()))
-        .to(Mailbox::new(Some("Me".to_owned()), "jan.rueggeberg@pm.me".parse().unwrap()))
+        .from(Mailbox::new(
+            Some("".to_owned()),
+            settings.smtp_username.parse().unwrap(),
+        ))
+        .to(Mailbox::new(
+            Some("Me".to_owned()),
+            settings.forward_address.parse().unwrap(),
+        ))
         .subject("TEst")
         .header(ContentType::TEXT_PLAIN)
         .body(String::from("Test"))
         .unwrap();
 
-    let creds = Credentials::new("smtp_username".to_owned(), "smtp_password".to_owned());
+    let creds = Credentials::new(
+        settings.smtp_username.to_owned(),
+        settings.smtp_token.to_owned(),
+    );
 
-    // Open a remote connection to gmail
-    let mailer = SmtpTransport::relay("smtp.gmail.com")
+    let mailer = SmtpTransport::relay(settings.smtp_server.as_str())
         .unwrap()
         .credentials(creds)
         .build();

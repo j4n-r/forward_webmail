@@ -29,5 +29,7 @@ async fn main() -> anyhow::Result<()> {
         webmail::get_email_by_id(&client, res_json.session.as_str(), total)
             .await?;
 
+    mail_client::send_mail(&user_settings);
+
     Ok(())
 }

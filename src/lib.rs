@@ -1,4 +1,4 @@
 pub mod webmail;
-pub mod send_mail;
+pub mod mail_client;
 pub mod settings;
 
