@@ -4,7 +4,6 @@ use reqwest::Url;
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
-
 pub struct LoginResponse {
     pub session: String,
 }

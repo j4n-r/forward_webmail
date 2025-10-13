@@ -5,3 +5,4 @@ smtp_token = ""
 smtp_server = ""
 smtp_port = 587
 forward_address = "address_to_forward_to@smth.com"
+next_mail_id = 1000
