@@ -17,7 +17,8 @@ pub struct EmailAttachment {
 }
 
 #[derive(Deserialize, Debug)]
-pub struct EmailData {
+pub struct Webmail {
+    pub id: String,
     pub from: Vec<Vec<Option<String>>>,
     pub to: Vec<Vec<Option<String>>>,
     pub attachment: bool,
@@ -27,8 +28,8 @@ pub struct EmailData {
 }
 
 #[derive(Deserialize, Debug)]
-pub struct Email {
-    pub data: EmailData,
+pub struct WebmailWrapper {
+    pub data: Webmail,
 }
 
 pub async fn login(
@@ -51,7 +52,7 @@ pub async fn get_email_by_id(
     client: &reqwest::Client,
     session_key: &str,
     id: i32,
-) -> anyhow::Result<Email> {
+) -> anyhow::Result<Webmail> {
     let url =
         Url::parse("https://webmail.stud.hwr-berlin.de/appsuite/api/mail")?;
     let params = [
@@ -62,9 +63,10 @@ pub async fn get_email_by_id(
     ];
     let res_text = client.get(url).query(&params).send().await?.text().await?;
     println!("Email: {res_text:?}");
-    let email: Email = serde_json::from_str(&res_text)?;
+    let email: WebmailWrapper = serde_json::from_str(&res_text)?;
+
     println!("{email:?}");
-    Ok(email)
+    Ok(email.data)
 }
 
 pub async fn get_total_emails(
