@@ -34,7 +34,7 @@ pub struct WebmailWrapper {
 pub async fn login(
     client: &reqwest::Client,
     settings: &settings::UserSettings,
-    url: Url,
+    url: &Url,
 ) -> anyhow::Result<reqwest::Response> {
     let params = [
         ("action", "login"),
@@ -42,7 +42,7 @@ pub async fn login(
         ("password", settings.password.as_str()),
     ];
 
-    let res = client.post(url).form(&params).send().await?;
+    let res = client.post(url.to_owned()).form(&params).send().await?;
     println!("Login request status: {:?}", res.status());
     Ok(res)
 }

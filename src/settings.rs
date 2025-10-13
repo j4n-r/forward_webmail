@@ -4,7 +4,7 @@ use std::fs;
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct AppData {
-    pub next_mail_id: i32
+    pub last_forwarded_mail_id: i32
 }
 
 #[derive(Deserialize, Debug)]
@@ -35,7 +35,7 @@ pub fn get_app_data() -> anyhow::Result<AppData> {
     Ok(app_data)
 }
 
-pub fn save_app_data(data: AppData) -> anyhow::Result<()> {
+pub fn save_app_data(data: &AppData) -> anyhow::Result<()> {
     let json_data = serde_json::to_string_pretty(&data)?;
     fs::write("app_data.json", json_data)?;
     Ok(())

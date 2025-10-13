@@ -18,7 +18,7 @@ pub struct Email {
     pub has_attachment: bool,
 }
 
-pub fn send_mail(settings: &settings::UserSettings, data: Email) {
+pub fn send_mail(settings: &settings::UserSettings, data: Email)  -> anyhow::Result<()> {
     let content = if data.has_attachment {
         format!(
             "<div>This Email has one or more attachment please check webmail<br><br></div> {}",
@@ -52,10 +52,9 @@ pub fn send_mail(settings: &settings::UserSettings, data: Email) {
         .build();
 
     // Send the email
-    match mailer.send(&email) {
-        Ok(_) => println!("Email sent successfully!"),
-        Err(e) => panic!("Could not send email: {e:?}"),
-    }
+    mailer.send(&email)?;
+    println!("Email sent successfully!");
+    Ok(())
 }
 
 impl Email {
