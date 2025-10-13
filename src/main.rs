@@ -1,10 +1,9 @@
-use forward_webmail::{mail_client::Email, settings::UserSettings, *};
+use forward_webmail::{ settings::UserSettings, *};
 use reqwest::{
     Url,
     cookie::{CookieStore, Jar},
     header::SET_COOKIE,
 };
-use tokio::test;
 
 async fn forward_mails(
     settings: &UserSettings,
@@ -88,7 +87,7 @@ async fn main() -> anyhow::Result<()> {
 
         loop {
             //try happy path
-            if let Err(e) = forward_mails(
+            if let Err(_) = forward_mails(
                 &user_settings,
                 &mut last_mail,
                 &client,
