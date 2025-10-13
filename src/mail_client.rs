@@ -6,7 +6,7 @@ use lettre::message::{Mailbox, header::ContentType};
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{Message, SmtpTransport, Transport};
 
-#[derive(Debug )]
+#[derive(Debug)]
 pub struct Email {
     pub id: i32,
     pub from_name: String,
@@ -19,10 +19,14 @@ pub struct Email {
 }
 
 pub fn send_mail(settings: &settings::UserSettings, data: Email) {
-    let content = format!(
-        "<div>Has attachment: {}<br><br></div> {}",
-        data.has_attachment, data.content
-    );
+    let content = if data.has_attachment {
+        format!(
+            "<div>This Email has one or more attachment please check webmail<br><br></div> {}",
+            data.content
+        )
+    } else {
+        data.content
+    };
     let email = Message::builder()
         .from(Mailbox::new(
             Some(data.from_name.to_owned()),
@@ -53,7 +57,6 @@ pub fn send_mail(settings: &settings::UserSettings, data: Email) {
         Err(e) => panic!("Could not send email: {e:?}"),
     }
 }
-
 
 impl Email {
     pub fn from_webmail(webmail: webmail::Webmail) -> anyhow::Result<Email> {

@@ -1,5 +1,4 @@
-use anyhow::Context;
-use forward_webmail::{mail_client::Email, webmail::EmailAttachment, *};
+use forward_webmail::{mail_client::Email,*};
 use reqwest::{
     Url,
     cookie::{CookieStore, Jar},
@@ -28,7 +27,7 @@ async fn main() -> anyhow::Result<()> {
         webmail::get_total_emails(&client, res_json.session.as_str()).await?;
 
     let webmail =
-        webmail::get_email_by_id(&client, res_json.session.as_str(), total-5)
+        webmail::get_email_by_id(&client, res_json.session.as_str(), total-6)
             .await?;
     let email =
         Email::from_webmail(webmail).expect("Error parsing webmail into email");
