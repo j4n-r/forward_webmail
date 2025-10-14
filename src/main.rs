@@ -128,6 +128,17 @@ async fn main() -> anyhow::Result<()> {
             // TODO: handle sending email error differently
             Err(e) => {
                 error!("Forwarding Mails failed: {e}");
+                if let Err(e) = send_discord_webhook(
+                    &user_settings,
+                    &client,
+                    e.to_string(),
+                )
+                .await
+                {
+                    error!("Maybe session gone, maybe rate limited");
+                    // TODO: send error email
+                    todo!();
+                }
                 match try_login(&client, &user_settings, &url).await {
                     Ok(new_session_key) => {
                         session_key = new_session_key;

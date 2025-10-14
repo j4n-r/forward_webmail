@@ -90,7 +90,7 @@ pub async fn get_total_emails(
     match res_values["data"][0][0].as_str() {
         Some(total) => {
             let total = total.parse::<i32>()?;
-            debug!("Total Emails: {total}");
+            info!("Total Emails: {total}");
             Ok(total)
         }
         None => Err(anyhow!("Something went wrong while getting total")),
