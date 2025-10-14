@@ -17,7 +17,6 @@ async fn send_discord_webhook(
         .json(&msg)
         .send()
         .await?;
-    dbg!(&res);
     Ok(res.status())
 }
 
@@ -91,29 +90,30 @@ async fn main() -> anyhow::Result<()> {
     // panic because if we can't save stuff we don't want to continue
     settings::save_app_data(&app_data).unwrap();
 
-    // start a loop which checks the total nuber with the number in the app_data.json
-    // if it is higher then fetch the new emails and forward them
-    // sleep
-
+    // keep track of the last email that was forwarded so we don't have to read from disk all the time
     let mut last_mail = app_data.last_forwarded_mail_id;
+    // keep track of the current seesion key in case of relogin
     let mut session_key = res_json.session;
-    // relogin if get_email or get_total fails
-    loop {
-        let max_retries = 3;
-        let mut attempts = 0;
 
-        loop {
-            //try happy path
-            if let Err(_) = forward_mails(
-                &user_settings,
-                &mut last_mail,
-                &client,
-                session_key.as_str(),
-            )
-            .await
-            {
+    // main loop to forward mails and if the session expires try to login
+    let max_retries = 3;
+    let mut attempts = 0;
+    loop {
+        match forward_mails(
+            &user_settings,
+            &mut last_mail,
+            &client,
+            session_key.as_str(),
+        )
+        .await
+        {
+            Ok(_) => attempts = 0,
+            // ignore the error because we do not want to know when the sesssion expired
+            // TODO: handle sending email error differently
+            Err(_) => {
                 match try_login(&client, &user_settings, &url).await {
                     Ok(new_session_key) => session_key = new_session_key,
+                    // if login fails we send a discord notification and increase the attempts
                     Err(e) => {
                         if let Err(e) = send_discord_webhook(
                             &user_settings,
@@ -122,17 +122,31 @@ async fn main() -> anyhow::Result<()> {
                         )
                         .await
                         {
-                            println!("{e}");
-                            if attempts > max_retries {};
-                            panic!("Max login retires reached: {e}");
+                            // TODO: send error email
+                            todo!();
+                        }
+                        println!("{e}");
+                        if attempts >= max_retries {
+                            send_discord_webhook(
+                                &user_settings,
+                                &client,
+                                format!(
+                                    "Max login retires reached: \n Error: {e}"
+                                ),
+                            )
+                            .await
+                            // we panic anyways so why not also when discord fails
+                            .expect("Max login retires reached: \n Error: {e}");
+                            panic!("Max retries reached, shutting down");
                         }
                         attempts += 1;
                     }
                 }
             }
-            let five_min = std::time::Duration::from_secs(5 * 60);
-            std::thread::sleep(five_min);
-        }
+        };
+        let five_min = std::time::Duration::from_secs(5);
+        std::thread::sleep(five_min);
+        println!("{attempts}");
     }
 }
 
@@ -154,42 +168,39 @@ mod tests {
         Ok(())
     }
 
-    // #[tokio::test]
-    // async fn end_to_end() -> anyhow::Result<()> {
-    //     let user_settings = settings::parse_from_file();
+    #[tokio::test]
+    async fn end_to_end() -> anyhow::Result<()> {
+        let user_settings = settings::parse_from_file();
 
-    //     let mut app_data = settings::get_app_data()?;
+        let mut app_data = settings::get_app_data()?;
 
-    //     let jar = std::sync::Arc::new(Jar::default());
-    //     let client = reqwest::Client::builder()
-    //         .cookie_provider(jar.clone())
-    //         .build()?;
+        let jar = std::sync::Arc::new(Jar::default());
+        let client = reqwest::Client::builder()
+            .cookie_provider(jar.clone())
+            .build()?;
 
-    //     let url = Url::parse(
-    //         "https://webmail.stud.hwr-berlin.de/appsuite/api/login",
-    //     )?;
-    //     let res = webmail::login(&client, &user_settings, &url).await?;
+        let url = Url::parse(
+            "https://webmail.stud.hwr-berlin.de/appsuite/api/login",
+        )?;
+        let res = webmail::login(&client, &user_settings, &url).await?;
 
-    //     let mut res_headers = res.headers().get_all(SET_COOKIE).iter();
-    //     jar.set_cookies(&mut res_headers, &url);
+        let mut res_headers = res.headers().get_all(SET_COOKIE).iter();
+        jar.set_cookies(&mut res_headers, &url);
 
-    //     let res_json = res.json::<webmail::LoginResponse>().await?;
+        let res_json = res.json::<webmail::LoginResponse>().await?;
 
-    //     let total =
-    //         webmail::get_total_emails(&client, res_json.session.as_str())
-    //             .await?;
+        let total =
+            webmail::get_total_emails(&client, res_json.session.as_str())
+                .await?;
 
-    //     let webmail = webmail::get_email_by_id(
-    //         &client,
-    //         res_json.session.as_str(),
-    //         total - 6,
-    //     )
-    //     .await?;
-    //     let email = Email::from_webmail(webmail)
-    //         .expect("Error parsing webmail into email");
+        let webmail =
+            webmail::get_email_by_id(&client, res_json.session.as_str(), total)
+                .await?;
+        let email = mail_client::Email::from_webmail(webmail)
+            .expect("Error parsing webmail into email");
 
-    //     let status = mail_client::send_mail(&user_settings, email);
-    //     assert!(status.is_ok());
-    //     Ok(())
-    // }
+        let status = mail_client::send_mail(&user_settings, email);
+        assert!(status.is_ok());
+        Ok(())
+    }
 }

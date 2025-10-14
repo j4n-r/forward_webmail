@@ -11,4 +11,5 @@ serde_json = "1.0"
 lettre = "0.11"
 anyhow = "1.0.100"
 config = "0.15.18"
+env_logger = "0.11.8"
 
