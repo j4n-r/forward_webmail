@@ -1,4 +1,4 @@
-use forward_webmail::{ settings::UserSettings, *};
+use forward_webmail::{settings::UserSettings, *};
 use reqwest::{
     Url,
     cookie::{CookieStore, Jar},
@@ -6,13 +6,19 @@ use reqwest::{
 };
 use serde_json::json;
 
-
-async fn send_discord_webhook(settings: &UserSettings, client: &reqwest::Client, msg: String) -> anyhow::Result<reqwest::StatusCode> {
+async fn send_discord_webhook(
+    settings: &UserSettings,
+    client: &reqwest::Client,
+    msg: String,
+) -> anyhow::Result<reqwest::StatusCode> {
     let msg = json![{"content": msg}];
-    let res = client.post(settings.webhook.as_str()).json(&msg).send().await?;
+    let res = client
+        .post(settings.webhook.as_str())
+        .json(&msg)
+        .send()
+        .await?;
     dbg!(&res);
     Ok(res.status())
-
 }
 
 async fn forward_mails(
@@ -29,6 +35,7 @@ async fn forward_mails(
                 webmail::get_email_by_id(client, session_key, id).await?;
             let email = mail_client::Email::from_webmail(webmail)?;
             mail_client::send_mail(settings, email)?;
+            println!("Mail: {id} forwarded");
             *last_mail = id;
         }
     }
@@ -108,10 +115,18 @@ async fn main() -> anyhow::Result<()> {
                 match try_login(&client, &user_settings, &url).await {
                     Ok(new_session_key) => session_key = new_session_key,
                     Err(e) => {
-                    if attempts > max_retries {
-                        panic!("Max login retires reached: {e}");
-                    }
-                    attempts += 1;
+                        if let Err(e) = send_discord_webhook(
+                            &user_settings,
+                            &client,
+                            e.to_string(),
+                        )
+                        .await
+                        {
+                            println!("{e}");
+                            if attempts > max_retries {};
+                            panic!("Max login retires reached: {e}");
+                        }
+                        attempts += 1;
                     }
                 }
             }
@@ -130,10 +145,11 @@ mod tests {
     async fn discord_webhook() -> anyhow::Result<()> {
         let user_settings = settings::parse_from_file();
 
-        let client = reqwest::Client::builder()
-            .build()?;
+        let client = reqwest::Client::builder().build()?;
         let msg = "test";
-        let res_code = send_discord_webhook(&user_settings, &client, msg.to_string()).await?;
+        let res_code =
+            send_discord_webhook(&user_settings, &client, msg.to_string())
+                .await?;
         debug_assert!(reqwest::StatusCode::is_success(&res_code) == true);
         Ok(())
     }
