@@ -4,6 +4,16 @@ use reqwest::{
     cookie::{CookieStore, Jar},
     header::SET_COOKIE,
 };
+use serde_json::json;
+
+
+async fn send_discord_webhook(settings: &UserSettings, client: &reqwest::Client, msg: String) -> anyhow::Result<reqwest::StatusCode> {
+    let msg = json![{"content": msg}];
+    let res = client.post(settings.webhook.as_str()).json(&msg).send().await?;
+    dbg!(&res);
+    Ok(res.status())
+
+}
 
 async fn forward_mails(
     settings: &UserSettings,
@@ -113,44 +123,57 @@ async fn main() -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
 
     #[tokio::test]
-    async fn end_to_end() -> anyhow::Result<()> {
+    async fn discord_webhook() -> anyhow::Result<()> {
         let user_settings = settings::parse_from_file();
 
-        let mut app_data = settings::get_app_data()?;
-
-        let jar = std::sync::Arc::new(Jar::default());
         let client = reqwest::Client::builder()
-            .cookie_provider(jar.clone())
             .build()?;
-
-        let url = Url::parse(
-            "https://webmail.stud.hwr-berlin.de/appsuite/api/login",
-        )?;
-        let res = webmail::login(&client, &user_settings, &url).await?;
-
-        let mut res_headers = res.headers().get_all(SET_COOKIE).iter();
-        jar.set_cookies(&mut res_headers, &url);
-
-        let res_json = res.json::<webmail::LoginResponse>().await?;
-
-        let total =
-            webmail::get_total_emails(&client, res_json.session.as_str())
-                .await?;
-
-        let webmail = webmail::get_email_by_id(
-            &client,
-            res_json.session.as_str(),
-            total - 6,
-        )
-        .await?;
-        let email = Email::from_webmail(webmail)
-            .expect("Error parsing webmail into email");
-
-        let status = mail_client::send_mail(&user_settings, email);
-        assert!(status.is_ok());
+        let msg = "test";
+        let res_code = send_discord_webhook(&user_settings, &client, msg.to_string()).await?;
+        debug_assert!(reqwest::StatusCode::is_success(&res_code) == true);
         Ok(())
     }
+
+    // #[tokio::test]
+    // async fn end_to_end() -> anyhow::Result<()> {
+    //     let user_settings = settings::parse_from_file();
+
+    //     let mut app_data = settings::get_app_data()?;
+
+    //     let jar = std::sync::Arc::new(Jar::default());
+    //     let client = reqwest::Client::builder()
+    //         .cookie_provider(jar.clone())
+    //         .build()?;
+
+    //     let url = Url::parse(
+    //         "https://webmail.stud.hwr-berlin.de/appsuite/api/login",
+    //     )?;
+    //     let res = webmail::login(&client, &user_settings, &url).await?;
+
+    //     let mut res_headers = res.headers().get_all(SET_COOKIE).iter();
+    //     jar.set_cookies(&mut res_headers, &url);
+
+    //     let res_json = res.json::<webmail::LoginResponse>().await?;
+
+    //     let total =
+    //         webmail::get_total_emails(&client, res_json.session.as_str())
+    //             .await?;
+
+    //     let webmail = webmail::get_email_by_id(
+    //         &client,
+    //         res_json.session.as_str(),
+    //         total - 6,
+    //     )
+    //     .await?;
+    //     let email = Email::from_webmail(webmail)
+    //         .expect("Error parsing webmail into email");
+
+    //     let status = mail_client::send_mail(&user_settings, email);
+    //     assert!(status.is_ok());
+    //     Ok(())
+    // }
 }

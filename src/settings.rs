@@ -16,6 +16,7 @@ pub struct UserSettings {
     pub smtp_server: String,
     pub smtp_port: u16,
     pub forward_address: String,
+    pub webhook: String,
 }
 
 pub fn parse_from_file() -> UserSettings {
