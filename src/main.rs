@@ -1,4 +1,7 @@
+use std::time::Duration;
+
 use forward_webmail::{settings::UserSettings, *};
+use log::{debug, error, info};
 use reqwest::{
     Url,
     cookie::{CookieStore, Jar},
@@ -26,15 +29,18 @@ async fn forward_mails(
     client: &reqwest::Client,
     session_key: &str,
 ) -> anyhow::Result<()> {
+
+    tokio::time::sleep(Duration::from_secs(5)).await;
     let total_mails = webmail::get_total_emails(client, session_key).await?;
 
     if total_mails > *last_mail {
         for id in *last_mail + 1..=total_mails {
+            tokio::time::sleep(Duration::from_secs(5)).await;
             let webmail =
                 webmail::get_email_by_id(client, session_key, id).await?;
             let email = mail_client::Email::from_webmail(webmail)?;
             mail_client::send_mail(settings, email)?;
-            println!("Mail: {id} forwarded");
+            info!("Mail: {id} forwarded");
             *last_mail = id;
         }
     }
@@ -55,10 +61,12 @@ async fn try_login(
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    env_logger::init();
     let user_settings = settings::parse_from_file();
 
     let jar = std::sync::Arc::new(Jar::default());
     let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36")
         .cookie_provider(jar.clone())
         .build()?;
 
@@ -73,30 +81,39 @@ async fn main() -> anyhow::Result<()> {
 
     // check if there is start value in app_data.json
     let app_data = match settings::get_app_data() {
-        Ok(data) => data,
+        Ok(data) => {
+            debug!("Found start value: {:?}", &data);
+            data
+        }
         // if not get the total number of emails
         Err(_) => {
+            error!("Error getting app_data file");
             // this panics because there is no sensible default we can use for
             // the start of the email forwarding except the newest one
             let total =
                 webmail::get_total_emails(&client, res_json.session.as_str())
                     .await
                     .unwrap();
+            debug!("Got total Mails: {total}");
             settings::AppData {
                 last_forwarded_mail_id: total,
             }
         }
     };
     // panic because if we can't save stuff we don't want to continue
-    settings::save_app_data(&app_data).unwrap();
+    settings::save_app_data(&app_data).expect("Was not able to save app_data.");
+    debug!("saved app_data");
 
     // keep track of the last email that was forwarded so we don't have to read from disk all the time
     let mut last_mail = app_data.last_forwarded_mail_id;
+    debug!("Last Mail forwarded: {last_mail}");
     // keep track of the current seesion key in case of relogin
     let mut session_key = res_json.session;
+    debug!("session key: {session_key}");
 
     // main loop to forward mails and if the session expires try to login
     let max_retries = 3;
+    debug!("Max retries: {max_retries}");
     let mut attempts = 0;
     loop {
         match forward_mails(
@@ -108,13 +125,19 @@ async fn main() -> anyhow::Result<()> {
         .await
         {
             Ok(_) => attempts = 0,
-            // ignore the error because we do not want to know when the sesssion expired
             // TODO: handle sending email error differently
-            Err(_) => {
+            Err(e) => {
+                error!("Forwarding Mails failed: {e}");
                 match try_login(&client, &user_settings, &url).await {
-                    Ok(new_session_key) => session_key = new_session_key,
+                    Ok(new_session_key) => {
+                        session_key = new_session_key;
+                        info!(
+                            "Successfully got now session_key: {session_key}"
+                        );
+                    }
                     // if login fails we send a discord notification and increase the attempts
                     Err(e) => {
+                        error!("Error logging in {e}");
                         if let Err(e) = send_discord_webhook(
                             &user_settings,
                             &client,
@@ -122,10 +145,10 @@ async fn main() -> anyhow::Result<()> {
                         )
                         .await
                         {
+                            error!("Error sending Discord webhook: {e}");
                             // TODO: send error email
                             todo!();
                         }
-                        println!("{e}");
                         if attempts >= max_retries {
                             send_discord_webhook(
                                 &user_settings,
@@ -140,13 +163,13 @@ async fn main() -> anyhow::Result<()> {
                             panic!("Max retries reached, shutting down");
                         }
                         attempts += 1;
+                        debug!("Current Attempt: {attempts}");
                     }
                 }
             }
         };
-        let five_min = std::time::Duration::from_secs(5);
-        std::thread::sleep(five_min);
-        println!("{attempts}");
+        let five_min = std::time::Duration::from_secs(5 * 60);
+        tokio::time::sleep(five_min).await;
     }
 }
 

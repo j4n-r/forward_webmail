@@ -510,6 +510,7 @@ dependencies = [
  "config",
  "env_logger",
  "lettre",
+ "log",
  "reqwest",
  "serde",
  "serde_json",

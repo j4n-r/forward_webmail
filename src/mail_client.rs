@@ -5,6 +5,7 @@ use anyhow::anyhow;
 use lettre::message::{Mailbox, header::ContentType};
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{Message, SmtpTransport, Transport};
+use log::info;
 
 #[derive(Debug)]
 pub struct Email {
@@ -53,7 +54,7 @@ pub fn send_mail(settings: &settings::UserSettings, data: Email)  -> anyhow::Res
 
     // Send the email
     mailer.send(&email)?;
-    println!("Email sent successfully!");
+    info!("Email sent successfully!");
     Ok(())
 }
 

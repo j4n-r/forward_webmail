@@ -1,5 +1,6 @@
 use crate::settings;
 use anyhow::anyhow;
+use log::{info,debug};
 use reqwest::Url;
 use serde::Deserialize;
 
@@ -43,7 +44,7 @@ pub async fn login(
     ];
 
     let res = client.post(url.to_owned()).form(&params).send().await?;
-    println!("Login request status: {:?}", res.status());
+    info!("Login request status: {:?}", res.status());
     Ok(res)
 }
 
@@ -61,10 +62,10 @@ pub async fn get_email_by_id(
         ("session", session_key),
     ];
     let res_text = client.get(url).query(&params).send().await?.text().await?;
-    println!("Email: {res_text:?}");
+    debug!("Webmail content: {:?}", &res_text);
     let email: WebmailWrapper = serde_json::from_str(&res_text)?;
 
-    println!("{email:?}");
+    debug!("Email: {email:?}");
     Ok(email.data)
 }
 
@@ -82,16 +83,16 @@ pub async fn get_total_emails(
         ("order", "desc"),
         ("limit", "1"),
     ];
+    debug!("{params:?}");
     let res_text = client.get(url).query(&params).send().await?.text().await?;
     let res_values: serde_json::Value = serde_json::from_str(&res_text)?;
+    debug!("Total mails response: {:?}", &res_text);
     match res_values["data"][0][0].as_str() {
         Some(total) => {
             let total = total.parse::<i32>()?;
-            println!("Total Emails: {total}");
+            debug!("Total Emails: {total}");
             Ok(total)
         }
         None => Err(anyhow!("Something went wrong while getting total")),
     }
-    // let email: Email = serde_json::from_str(&res_text)?;
-    // println!("{email:?}");
 }

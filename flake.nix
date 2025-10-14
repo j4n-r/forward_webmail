@@ -29,6 +29,7 @@
 
           env = {
              PKG_CONFIG_PATH = "${pkgs.openssl.dev}/lib/pkgconfig";
+            RUST_LOG="debug";
           };
         };
 
