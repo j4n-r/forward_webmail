@@ -106,6 +106,8 @@ impl Email {
                 anyhow!("There should always be a content attachment here")
             })?
             .content
+            .as_ref()
+            .unwrap_or(&String::from("No content available"))
             .to_owned();
 
         Ok(Email {

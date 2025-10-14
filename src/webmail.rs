@@ -13,7 +13,7 @@ pub struct LoginResponse {
 pub struct EmailAttachment {
     pub content_type: String,
     pub size: i32,
-    pub content: String,
+    pub content: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
