@@ -29,15 +29,30 @@ async fn forward_mails(
     client: &reqwest::Client,
     session_key: &str,
 ) -> anyhow::Result<()> {
-
+    // for some reason these two mostly work on the second try ????
+    // TODO make a nicer retry logic !!!!!
     tokio::time::sleep(Duration::from_secs(5)).await;
-    let total_mails = webmail::get_total_emails(client, session_key).await?;
-
+    let total_mails = match webmail::get_total_emails(client, session_key).await
+    {
+        Ok(total) => total,
+        Err(_) => {
+            debug!("Retry get_total_mails()");
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            webmail::get_total_emails(client, session_key).await?
+        }
+    };
     if total_mails > *last_mail {
         for id in *last_mail + 1..=total_mails {
             tokio::time::sleep(Duration::from_secs(5)).await;
             let webmail =
-                webmail::get_email_by_id(client, session_key, id).await?;
+                match webmail::get_email_by_id(client, session_key, id).await {
+                    Ok(webmail) => webmail,
+                    Err(_) => {
+                        debug!("Retry get_email_by_id()");
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+                        webmail::get_email_by_id(client, session_key, id).await?
+                    }
+                };
             let email = mail_client::Email::from_webmail(webmail)?;
             mail_client::send_mail(settings, email)?;
             info!("Mail: {id} forwarded");
@@ -128,12 +143,9 @@ async fn main() -> anyhow::Result<()> {
             // TODO: handle sending email error differently
             Err(e) => {
                 error!("Forwarding Mails failed: {e}");
-                if let Err(e) = send_discord_webhook(
-                    &user_settings,
-                    &client,
-                    e.to_string(),
-                )
-                .await
+                if let Err(e) =
+                    send_discord_webhook(&user_settings, &client, e.to_string())
+                        .await
                 {
                     error!("Maybe session gone, maybe rate limited");
                     // TODO: send error email
