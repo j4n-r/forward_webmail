@@ -52,6 +52,7 @@ async fn forward_mails(
     let total_mails =
         retry_function(|| webmail::get_total_emails(client, session_key), 3)
             .await?;
+
     if total_mails > last_mail {
         for id in last_mail + 1..=total_mails {
             let webmail = retry_function(
@@ -125,7 +126,7 @@ async fn main() -> anyhow::Result<()> {
     debug!("saved app_data");
 
     // keep track of the last email that was forwarded so we don't have to read from disk all the time
-    let last_mail = app_data.last_forwarded_mail_id;
+    let mut last_mail = app_data.last_forwarded_mail_id;
     debug!("Last Mail forwarded: {last_mail}");
     // keep track of the current seesion key in case of relogin
     let session_key = res_json.session;
@@ -144,7 +145,8 @@ async fn main() -> anyhow::Result<()> {
         )
         .await
         {
-            Ok(last_mail) => {
+            Ok(last_processed_mail) => {
+                last_mail = last_processed_mail;
                 let new_app_data = settings::AppData {
                     last_forwarded_mail_id: last_mail,
                 };
