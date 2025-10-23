@@ -1,6 +1,6 @@
 use crate::settings;
 use anyhow::anyhow;
-use log::{info,debug};
+use log::{debug, info};
 use reqwest::Url;
 use serde::Deserialize;
 
@@ -35,15 +35,16 @@ pub struct WebmailWrapper {
 pub async fn login(
     client: &reqwest::Client,
     settings: &settings::UserSettings,
-    url: &Url,
 ) -> anyhow::Result<reqwest::Response> {
+    let url =
+        Url::parse("https://webmail.stud.hwr-berlin.de/appsuite/api/login")?;
     let params = [
         ("action", "login"),
         ("name", settings.username.as_str()),
         ("password", settings.password.as_str()),
     ];
 
-    let res = client.post(url.to_owned()).form(&params).send().await?;
+    let res = client.post(url).form(&params).send().await?;
     info!("Login request status: {:?}", res.status());
     Ok(res)
 }

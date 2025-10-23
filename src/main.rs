@@ -9,6 +9,25 @@ use reqwest::{
 };
 use serde_json::json;
 
+async fn retry_function<F, Fut, T>(
+    mut f: F,
+    max_attempts: i32,
+) -> anyhow::Result<T>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = anyhow::Result<T>>,
+{
+    let mut attempt = 0;
+    loop {
+        let res = f().await;
+        if res.is_ok() || attempt >= max_attempts {
+            break res;
+        }
+        attempt += 1;
+        tokio::time::sleep(Duration::from_secs(3)).await;
+    }
+}
+
 async fn send_discord_webhook(
     settings: &UserSettings,
     client: &reqwest::Client,
@@ -30,29 +49,16 @@ async fn forward_mails(
     session_key: &str,
 ) -> anyhow::Result<()> {
     // for some reason these two mostly work on the second try ????
-    // TODO make a nicer retry logic !!!!!
-    tokio::time::sleep(Duration::from_secs(5)).await;
-    let total_mails = match webmail::get_total_emails(client, session_key).await
-    {
-        Ok(total) => total,
-        Err(_) => {
-            debug!("Retry get_total_mails()");
-            tokio::time::sleep(Duration::from_secs(5)).await;
-            webmail::get_total_emails(client, session_key).await?
-        }
-    };
+    let total_mails =
+        retry_function(|| webmail::get_total_emails(client, session_key), 3)
+            .await?;
     if total_mails > *last_mail {
         for id in *last_mail + 1..=total_mails {
-            tokio::time::sleep(Duration::from_secs(5)).await;
-            let webmail =
-                match webmail::get_email_by_id(client, session_key, id).await {
-                    Ok(webmail) => webmail,
-                    Err(_) => {
-                        debug!("Retry get_email_by_id()");
-                        tokio::time::sleep(Duration::from_secs(5)).await;
-                        webmail::get_email_by_id(client, session_key, id).await?
-                    }
-                };
+            let webmail = retry_function(
+                || webmail::get_email_by_id(client, session_key, id),
+                3,
+            )
+            .await?;
             let email = mail_client::Email::from_webmail(webmail)?;
             mail_client::send_mail(settings, email)?;
             info!("Mail: {id} forwarded");
@@ -60,18 +66,6 @@ async fn forward_mails(
         }
     }
     Ok(())
-}
-
-async fn try_login(
-    client: &reqwest::Client,
-    settings: &UserSettings,
-    url: &Url,
-) -> anyhow::Result<String> {
-    let res = webmail::login(client, settings, url)
-        .await?
-        .json::<webmail::LoginResponse>()
-        .await?;
-    Ok(res.session)
 }
 
 #[tokio::main]
@@ -85,12 +79,14 @@ async fn main() -> anyhow::Result<()> {
         .cookie_provider(jar.clone())
         .build()?;
 
-    let url =
-        Url::parse("https://webmail.stud.hwr-berlin.de/appsuite/api/login")?;
-    let res = webmail::login(&client, &user_settings, &url).await?;
+    let res =
+        retry_function(|| webmail::login(&client, &user_settings), 3).await?;
 
     let mut res_headers = res.headers().get_all(SET_COOKIE).iter();
-    jar.set_cookies(&mut res_headers, &url);
+    jar.set_cookies(
+        &mut res_headers,
+        &Url::parse("https://webmail.stud.hwr-berlin.de/appsuite/api/login")?,
+    );
 
     let res_json = res.json::<webmail::LoginResponse>().await?;
 
@@ -105,10 +101,18 @@ async fn main() -> anyhow::Result<()> {
             error!("Error getting app_data file");
             // this panics because there is no sensible default we can use for
             // the start of the email forwarding except the newest one
-            let total =
-                webmail::get_total_emails(&client, res_json.session.as_str())
-                    .await
-                    .unwrap();
+            let total = retry_function(
+                || {
+                    webmail::get_total_emails(
+                        &client,
+                        res_json.session.as_str(),
+                    )
+                },
+                3,
+            )
+            .await
+            // fail early here since it's the start of the program
+            .expect("Cannot get total mails");
             debug!("Got total Mails: {total}");
             settings::AppData {
                 last_forwarded_mail_id: total,
@@ -123,7 +127,7 @@ async fn main() -> anyhow::Result<()> {
     let mut last_mail = app_data.last_forwarded_mail_id;
     debug!("Last Mail forwarded: {last_mail}");
     // keep track of the current seesion key in case of relogin
-    let mut session_key = res_json.session;
+    let session_key = res_json.session;
     debug!("session key: {session_key}");
 
     // main loop to forward mails and if the session expires try to login
@@ -140,57 +144,59 @@ async fn main() -> anyhow::Result<()> {
         .await
         {
             Ok(_) => attempts = 0,
-            // TODO: handle sending email error differently
             Err(e) => {
-                error!("Forwarding Mails failed: {e}");
-                if let Err(e) =
-                    send_discord_webhook(&user_settings, &client, e.to_string())
-                        .await
+                if let Err(e) = retry_function(
+                    || webmail::login(&client, &user_settings),
+                    3,
+                )
+                .await
                 {
-                    error!("Maybe session gone, maybe rate limited");
-                    // TODO: send error email
-                    todo!();
+                    let _ = retry_function(
+                        || {
+                            send_discord_webhook(
+                                &user_settings,
+                                &client,
+                                e.to_string(),
+                            )
+                        },
+                        3,
+                    )
+                    .await;
                 }
-                match try_login(&client, &user_settings, &url).await {
-                    Ok(new_session_key) => {
-                        session_key = new_session_key;
-                        info!(
-                            "Successfully got now session_key: {session_key}"
-                        );
-                    }
-                    // if login fails we send a discord notification and increase the attempts
-                    Err(e) => {
-                        error!("Error logging in {e}");
-                        if let Err(e) = send_discord_webhook(
+                error!("Error forwarding mails: {e}");
+                let _ = retry_function(
+                    || {
+                        send_discord_webhook(
                             &user_settings,
                             &client,
                             e.to_string(),
                         )
-                        .await
-                        {
-                            error!("Error sending Discord webhook: {e}");
-                            // TODO: send error email
-                            todo!();
-                        }
-                        if attempts >= max_retries {
-                            send_discord_webhook(
-                                &user_settings,
-                                &client,
-                                format!(
-                                    "Max login retires reached: \n Error: {e}"
-                                ),
-                            )
-                            .await
-                            // we panic anyways so why not also when discord fails
-                            .expect("Max login retires reached: \n Error: {e}");
-                            panic!("Max retries reached, shutting down");
-                        }
-                        attempts += 1;
-                        debug!("Current Attempt: {attempts}");
-                    }
-                }
+                    },
+                    3,
+                )
+                .await
+                .unwrap_or_else(|e| {
+                    error!("Sending Discord webhook failed: {e}");
+                    reqwest::StatusCode::SERVICE_UNAVAILABLE
+                });
+                attempts += 1;
             }
-        };
+        }
+        if attempts == max_retries {
+            retry_function(
+                || {
+                    send_discord_webhook(
+                        &user_settings,
+                        &client,
+                        "Max retires reached, shutting down".to_string(),
+                    )
+                },
+                3,
+            )
+            .await
+            .expect("Max retries reached, and discord failed");
+            panic!("Max retries reached")
+        }
         let five_min = std::time::Duration::from_secs(5 * 60);
         tokio::time::sleep(five_min).await;
     }
