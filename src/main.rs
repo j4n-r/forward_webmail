@@ -55,6 +55,7 @@ async fn forward_mails(
 
     if total_mails > last_mail {
         for id in last_mail + 1..=total_mails {
+            tokio::time::sleep(Duration::from_secs(3)).await;
             let webmail = retry_function(
                 || webmail::get_email_by_id(client, session_key, id),
                 3,
@@ -64,7 +65,6 @@ async fn forward_mails(
             mail_client::send_mail(settings, email)?;
             info!("Mail: {id} forwarded");
             last_mail = id;
-            tokio::time::sleep(Duration::from_secs(3)).await;
         }
     }
     Ok(last_mail)
