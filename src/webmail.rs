@@ -1,6 +1,6 @@
 use crate::settings;
 use anyhow::anyhow;
-use log::{debug, info};
+use log::{debug, info, trace};
 use reqwest::Url;
 use serde::Deserialize;
 
@@ -63,10 +63,9 @@ pub async fn get_email_by_id(
         ("session", session_key),
     ];
     let res_text = client.get(url).query(&params).send().await?.text().await?;
-    debug!("Webmail content: {:?}", &res_text);
     let email: WebmailWrapper = serde_json::from_str(&res_text)?;
 
-    debug!("Email: {email:?}");
+    trace!("Email: {email:?}");
     Ok(email.data)
 }
 

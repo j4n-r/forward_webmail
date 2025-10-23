@@ -44,16 +44,16 @@ async fn send_discord_webhook(
 
 async fn forward_mails(
     settings: &UserSettings,
-    last_mail: &mut i32,
+    mut last_mail: i32,
     client: &reqwest::Client,
     session_key: &str,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<i32> {
     // for some reason these two mostly work on the second try ????
     let total_mails =
         retry_function(|| webmail::get_total_emails(client, session_key), 3)
             .await?;
-    if total_mails > *last_mail {
-        for id in *last_mail + 1..=total_mails {
+    if total_mails > last_mail {
+        for id in last_mail + 1..=total_mails {
             let webmail = retry_function(
                 || webmail::get_email_by_id(client, session_key, id),
                 3,
@@ -62,10 +62,11 @@ async fn forward_mails(
             let email = mail_client::Email::from_webmail(webmail)?;
             mail_client::send_mail(settings, email)?;
             info!("Mail: {id} forwarded");
-            *last_mail = id;
+            last_mail = id;
+            tokio::time::sleep(Duration::from_secs(3)).await;
         }
     }
-    Ok(())
+    Ok(last_mail)
 }
 
 #[tokio::main]
@@ -85,7 +86,7 @@ async fn main() -> anyhow::Result<()> {
     let mut res_headers = res.headers().get_all(SET_COOKIE).iter();
     jar.set_cookies(
         &mut res_headers,
-        &Url::parse("https://webmail.stud.hwr-berlin.de/appsuite/api/login")?,
+        &Url::parse("https://webmail.stud.hwr-berlin.de")?,
     );
 
     let res_json = res.json::<webmail::LoginResponse>().await?;
@@ -124,7 +125,7 @@ async fn main() -> anyhow::Result<()> {
     debug!("saved app_data");
 
     // keep track of the last email that was forwarded so we don't have to read from disk all the time
-    let mut last_mail = app_data.last_forwarded_mail_id;
+    let last_mail = app_data.last_forwarded_mail_id;
     debug!("Last Mail forwarded: {last_mail}");
     // keep track of the current seesion key in case of relogin
     let session_key = res_json.session;
@@ -137,13 +138,32 @@ async fn main() -> anyhow::Result<()> {
     loop {
         match forward_mails(
             &user_settings,
-            &mut last_mail,
+            last_mail,
             &client,
             session_key.as_str(),
         )
         .await
         {
-            Ok(_) => attempts = 0,
+            Ok(last_mail) => {
+                let new_app_data = settings::AppData {
+                    last_forwarded_mail_id: last_mail,
+                };
+                if let Err(e) = settings::save_app_data(&new_app_data) {
+                    error!("Error saving app_data {e}");
+                    let _ = retry_function(
+                        || {
+                            send_discord_webhook(
+                                &user_settings,
+                                &client,
+                                e.to_string(),
+                            )
+                        },
+                        3,
+                    )
+                    .await;
+                }
+                attempts = 0
+            }
             Err(e) => {
                 if let Err(e) = retry_function(
                     || webmail::login(&client, &user_settings),
@@ -231,10 +251,8 @@ mod tests {
             .cookie_provider(jar.clone())
             .build()?;
 
-        let url = Url::parse(
-            "https://webmail.stud.hwr-berlin.de/appsuite/api/login",
-        )?;
-        let res = webmail::login(&client, &user_settings, &url).await?;
+        let url = Url::parse("https://webmail.stud.hwr-berlin.de/")?;
+        let res = webmail::login(&client, &user_settings).await?;
 
         let mut res_headers = res.headers().get_all(SET_COOKIE).iter();
         jar.set_cookies(&mut res_headers, &url);
