@@ -2,6 +2,7 @@ use crate::settings;
 use crate::webmail;
 
 use anyhow::anyhow;
+use anyhow::Context;
 use lettre::message::{Mailbox, header::ContentType};
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{Message, SmtpTransport, Transport};
@@ -60,56 +61,42 @@ pub fn send_mail(settings: &settings::UserSettings, data: Email)  -> anyhow::Res
 
 impl Email {
     pub fn from_webmail(webmail: webmail::Webmail) -> anyhow::Result<Email> {
-        let id: i32 = webmail.id.parse().expect("Error parsing webmail ID");
-        let from_arr = webmail
-            .from
-            .first()
-            .expect("The from array should always exist");
-
-        let from_email = from_arr
-            .get(1)
-            .expect("There should always be 2 entries in the from array")
+        let id: i32 = webmail.id.parse()
+            .context("Failed to parse webmail ID")?;
+        
+        let from_arr = webmail.from.first()
+            .ok_or_else(|| anyhow!("The from array is empty"))?;
+        
+        let from_email = from_arr.get(1)
+            .ok_or_else(|| anyhow!("The from array should have at least 2 entries"))?
             .to_owned()
-            .ok_or_else(|| {
-                anyhow!("The email field is empty, this should never happen")
-            })?;
-
-        let from_name = from_arr
-            .first()
-            .expect("There should always be a value here but it might be null")
+            .ok_or_else(|| anyhow!("The from email field is empty"))?;
+        
+        let from_name = from_arr.first()
+            .ok_or_else(|| anyhow!("The from array is unexpectedly empty when accessing first element"))?
             .to_owned()
             .unwrap_or(from_email.clone());
-
-        let to_arr = webmail
-            .to
-            .first()
-            .expect("The to array should always exist");
-
-        let to_email = to_arr
-            .get(1)
-            .expect("There should always be 2 entries in the to array")
+        
+        let to_arr = webmail.to.first()
+            .ok_or_else(|| anyhow!("The to array is empty"))?;
+        
+        let to_email = to_arr.get(1)
+            .ok_or_else(|| anyhow!("The to array should have at least 2 entries"))?
             .to_owned()
-            .ok_or_else(|| {
-                anyhow!("The email field is empty, this should never happen")
-            })?;
-
-        let to_name = to_arr
-            .first()
-            .expect("There should always be a value here but it might be null")
+            .ok_or_else(|| anyhow!("The to email field is empty"))?;
+        
+        let to_name = to_arr.first()
+            .ok_or_else(|| anyhow!("The to array is unexpectedly empty when accessing first element"))?
             .to_owned()
             .unwrap_or(to_email.clone());
-
-        let content = webmail
-            .attachments
-            .first()
-            .ok_or_else(|| {
-                anyhow!("There should always be a content attachment here")
-            })?
+        
+        let content = webmail.attachments.first()
+            .ok_or_else(|| anyhow!("There should always be a content attachment here"))?
             .content
             .as_ref()
             .unwrap_or(&String::from("No content available"))
             .to_owned();
-
+        
         Ok(Email {
             id,
             from_name,
@@ -117,7 +104,7 @@ impl Email {
             to_name,
             to_email,
             subject: webmail.subject,
-            content: content,
+            content,
             has_attachment: webmail.attachment,
         })
     }
