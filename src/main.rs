@@ -61,7 +61,7 @@ async fn forward_mails(
                 3,
             )
             .await?;
-            let email = mail_client::Email::from_webmail(webmail)?;
+            let email = mail_client::Email::from_webmail(webmail, settings)?;
             mail_client::send_mail(settings, email)?;
             info!("Mail: {id} forwarded");
             last_mail = id;
