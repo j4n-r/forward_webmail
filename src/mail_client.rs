@@ -89,9 +89,13 @@ impl Email {
             .to_owned()
             .unwrap_or(from_email.clone());
 
+        // this is ultra weird but we basically fill the to_arr with defaults when it's empty (yes it can be empty....)
         let to_arr = match webmail.to.first() {
             Some(to_arr) => to_arr,
-            None => &vec![Some(settings.forward_address.to_owned())],
+            None => &vec![
+                Some(settings.forward_address.to_owned()),
+                Some(settings.forward_address.to_owned()),
+            ],
         };
 
         let to_email = to_arr
