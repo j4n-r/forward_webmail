@@ -7,6 +7,7 @@ use reqwest::{
     cookie::{CookieStore, Jar},
     header::SET_COOKIE,
 };
+use sentry::logger_info;
 use serde_json::json;
 
 async fn retry_function<F, Fut, T>(
@@ -70,10 +71,36 @@ async fn forward_mails(
     Ok(last_mail)
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    env_logger::init();
+fn main() {
+
     let user_settings = settings::parse_from_file();
+    let _guard = sentry::init((
+        user_settings.sentry_endpoint.clone(),
+        sentry::ClientOptions {
+            release: sentry::release_name!(),
+            enable_logs: true,
+            // Capture user IPs and potentially sensitive headers when using HTTP server integrations
+            // see https://docs.sentry.io/platforms/rust/data-management/data-collected for more info
+            send_default_pii: true,
+            ..Default::default()
+        },
+    ));
+
+    let logger = sentry::integrations::log::SentryLogger::with_dest(
+        env_logger::Builder::from_default_env().build(),
+    );
+    log::set_boxed_logger(Box::new(logger)).unwrap();
+    log::set_max_level(log::LevelFilter::Trace);
+
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(async {
+            start(user_settings).await.unwrap();
+        });
+}
+async fn start(user_settings: UserSettings) -> anyhow::Result<()> {
 
     let jar = std::sync::Arc::new(Jar::default());
     let client = reqwest::Client::builder()
